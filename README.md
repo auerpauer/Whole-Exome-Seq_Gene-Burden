@@ -2,73 +2,73 @@
 Which genes have the most meaningful mutations in your set of whole exome seq samples?
 
 ### WHAT'S GOING ON HERE?
-The general idea of "gene burden" is finding those genes that have a significant number of meaningful mutations that may have a causative effect on the phenotype of interest. So, what is a meaningful mutation? Great question! I wish I had a quick description. But, really, that's up to you to decide. These scripts make the following assumptions of what a meaningful mutation is:
-1) The mutation occurs more often than a set frequency in the following databases: a) NHLBI ESP 6500 b) 1000 Genomes 3) Broad ExAC. You decide what the frequency is at run-time. There is no default value.
-2) RefSeq annotation must annotate the mutation as being either exonic or splicing.
-3) RefSeq annotation must NOT annotate the mutation as synonymous or unknown.
+The general idea of "gene burden" is finding those genes that have a significant number of meaningful mutations among your samples that may have a causative effect on the phenotype of interest. So, what is a meaningful mutation? Great question! I wish I had a quick description. But, really, that's up to you to decide. These scripts make the following assumptions of what a meaningful mutation is:
+1) The variant frequency in the ExAC databases is lower than a given threshold. You decide what the threshold is at run-time.
+2) RefSeq annotation must annotate the variant as being either exonic or splicing.
+3) RefSeq annotation must NOT annotate the variant as synonymous or unknown.
 4) Optionally, RefSeq annotation can be used to filter out non-frameshift deletions. You decide at run-time if you want this filtering turned on.
 
 If all of these filters are passed, then the mutation is classified according to the following criteria:
-1) Loss-of-Function: RefSeq annotates the mutation as "stoploss", "stopgain", "splicing" or "frameshift".
+1) Loss-of-Function: RefSeq annotates the variant as "stoploss", "stopgain", "splicing" or "frameshift".
 2) Deleterious: Either CADD score is 15 or greater or metaSVM score is "D"(eleterious). You choose which method to use at run-time.
 3) Missense: The default classification if the other two criteria are not true. Remember, we have already filtered out all mutations that we are not interested in. All remaining mutations must receive a classification.
 
-The results of these filters and classifications are saved to a file. You must also run these filters and classifications on a set of controls that are ethnically similar to your samples. Your samples and controls are then compared with a Fisher right-tailed test to determine which mutation classification is significantly different from the controls. The result is a tab-delimited file (which should be viewed in a spreadsheet program) that details the p-value for each classification of mutation for both mutations-per-gene and samples-per-gene. That is to say, two sets of information are counted for each gene:
-1) The total number of mutations in the gene.
-2) The number of samples holding a mutation in this gene.
+The results of these filters and classifications are saved to a file that has the counts for all variant types, under all conditions for each gene.. You must also run these filters and classifications on a set of controls that are ethnically similar to your samples. Your samples and controls are then compared with a Fisher right-tailed test to determine which genes are significantly mutated by your samples, compared to your controls. The result is a tab-delimited file (which can be viewed in a spreadsheet program) that details the p-value for each classification of variant for both  "number of mutations per gene" and "number of samples that have a mutation in that gene." Thus, two sets of information are counted for each gene:
+1) The total number of variants in the gene.
+2) The number of samples holding a variant in this gene.
 
-These programs also track whether a gene has mutations that are homozygous, heterozygous or compound-heterozygous. This information is also displayed in the final tab-delimited output file.
+These programs also track whether a variants is homozygous, heterozygous or compound-heterozygous. This information is included in the column names of the output file.
 
-These annotations used for filtering and mutation classification are better explained at: http://annovar.openbioinformatics.org/en/latest/user-guide/gene/#output-file-1-refseq-gene-annotation
+The annotations used for filtering and mutation classification are better explained at: http://annovar.openbioinformatics.org/en/latest/user-guide/gene/#output-file-1-refseq-gene-annotation
+
+In addition to using the output file that holds the counts of mutations, another file is produced that describes information about each significant variant. This file is intended for further programmatic analysis, but can be viewed in a spreadsheet program, if you wish.
 
 
 ### HOW DO I USE THESE PROGRAMS?
-You must first have an annotated VCF file. The annotations must include SNV frequency in the above-noted databases along with RefSeq annotation. I have only used VCFs generated by the GATK pipeline and annotated with annovar. Your VCF file MUST include the meta-data header generated by annovar.
+You must first have an annotated VCF file. The annotations must include ExAC frequency, RefSeq annotation and metaSVM and/or CADD annotation. I have only used VCFs generated by the GATK pipeline and annotated with annovar. Your VCF file MUST include the meta-data header generated by annovar.
 
-You need to run two programs in order: exome_burden_script.py and then burden_script_right_tailed_fisher.pl.
-You must be running python version 2.7.5 and perl version 5.16.3. These programs have not been used on any other versions of these languages.
+You need to run two programs in order: exome_burden_script.py (once on your samples and once on your controls) and then gene_burden_fisher_exact.py.
+You must be running python version 2.7.5 or higher. These programs have NOT been written for Python 3.
 
 Assumptions:
-1) The programs in this repository are located on your machine at /home/luser/programs
-2) Your VCF files are located on your machine at /home/luser/data
-3) Results of these analysis will be stored at /home/luser/results
+1) The programs in this repository are located on your machine at /home/user/programs
+2) Your VCF files are located on your machine at /home/user/data
+3) Results of these analysis will be stored at /home/user/results
 
 # Filter and Classify Mutations: exome_burden_script.py
-$ /home/luser/programs/exome_burden_script.py
-usage: /home/luser/programs/active_dev/exome_burden_script.py parameters [options]
+$ /home/user/programs/exome_burden_script.py
+usage: /home/user/programs/active_dev/exome_burden_script.py parameters [options]
 
 Parameters:
         -f | --frequency        max desired frequency of variants in population databases
         -v | --vcf              VCF file to read in containing variants to be analyzed
-        -d | --funcDel          method to use for filtering functional deleteriousness: CADD or metaSVM
+        -d | --funcDel          method to use for filtering functional deleteriousness: CADD, metaSVM, radialSVM
+        -p | --pldiff-cutoff    minimum required value of plDiff for a sample to be included in further processing
+                 7:low stringency 8:high stringency
 Options
         -o | --outputDir        output directory to write files; default: current directory
         -x | --excel            FLAG: use to cause more header information for display in spreadsheet
         -s | --shift            FLAG: use to specify that nonframeshift indels should be filtered out
         -c | --coverage         required read depth for a variant to be accepted; default: 8
-        -e | --exempt-database  comma-delimited list of population databases to NOT use as filters: esp6500,1000g,exac
+        -a | --africa-special   FLAG: filter specific info fields
 
-Here is an example of every parameter and option being used:
+Here is an example with commonly used options:
 
-$ /home/luser/programs/exome_burden_script.py\
- --frequency 0.01 # 1%\
- --vcf my_samples.vcf\
- --funcDel CADD\
- --outputDir /home/luser/results\
- --excel\
- --shift\
- --coverage 10\
- --exempt-database esp6500
+$ /home/user/programs/exome_burden_script.py \
+ --frequency 5e-05 \
+ --vcf my_annotated_samples.vcf \
+ --funcDel CADD \
+ --outputDir /home/luser/results \
+ --shift \
+ --coverage 10
 
-More commonly you will only specify a few of the options. ALL PARAMETERS MUST BE SPECIFIED FOR THE PROGRAM TO RUN. Also, do NOT use the "--excel" option when following this work flow. It is used when performing other analyses after this step.
-
-$ /home/luser/programs/exome_burden_script.py -f 0.01 -v my_samples.vcf -f CADD -o ../results
+ALL PARAMETERS MUST BE SPECIFIED FOR THE PROGRAM TO RUN. Also, do NOT use the "--excel" option when following this work flow. It is intended as a last step in a different work flow not described here.
 
 Regardless of the options you use, this program creates two files in the specified output directory.
-1) my_samples_0.01_cadd_counts_table.tsv
-2) my_samples_0.01_cadd_variant.table
+1) my_annotated_samples_5e-05_cadd_counts_table.tsv
+2) my_annotated_samples_5e-05_cadd_variant.table
 
-The first one is a tab-delimited file with the p-values of all the various mutation classifications explained above. The second file is a "melted VCF". That is all data is turned "sideways" for further processing at the Yale Center for Genome Analysis. You can safely delete this file. (A to-do list item is to allow a flag that does not create this file.)
+The first one is a tab-delimited file with the p-values of all the various mutation classifications explained above. The second file is a "melted VCF". That is all data is turned "sideways" for further analysis.
 
 The general formula for output file names is:
 <input_vcf_file_name>_<frequency>_<functional_deleteriousness_method>_counts_table.tsv
@@ -76,22 +76,43 @@ This way, you can keep track of which output is from a specific sample and which
 
 You now need to run the programs on your controls WITH THE SAME OPTIONS USED BEFORE. Actually, you can use a different output directory, if you wish.
 
-$ /home/luser/programs/exome_burden_script.py -f 0.01 -v controls.vcf -f CADD -o ../results
-Which creates controls_0.01_cadd_counts_table.tsv
+$ /home/user/programs/exome_burden_script.py \
+ --frequency 5e-05 \
+ --vcf my_annotated_controls.vcf \
+ --funcDel CADD \
+ --outputDir /home/luser/results \
+ --shift \
+ --coverage 10
 
+# Determine p-values: gene_burden_fisher_exact.py
+This program requires the the two files just previously generated and the number of samples in each.
 
-# Determine p-values: burden_script_right_tailed_fisher.pl
-This program requires the the two file just previously generated and the number of samples in each.
+$ ./gene_burden_fisher_exact.py
+usage: ./gene_burden_fisher_exact.py parameters
+Parameters:
+        -a | --cases-file       CASES gene burden output
+        -n | --num-cases        number of cases in gene burden output
+        -o | --controls-file    CONTROLS gene burden output
+        -m | --num-controls     number of controls in gene burden output
+Options:
+        -i | --individual-counts         FLAG: independent counts yield independent p-values
 
-$ /home/luser/programs/burden_script_right_tailed_fisher.pl\
- controls_0.01_cadd_counts_table.tsv 2700\
- my_samples_0.01_cadd_counts_table.tsv 100
+$ /home/user/programs/gene_burden_fisher_exact.py \
+ -cases-file my_annotated_samples_5e-05_cadd_counts_table.tsv \
+ -num-cases 100
+ -controls-file my_annotated_controls_5e-05_cadd_counts_table.tsv \
+ -num-controls 2700 \
+ > /home/luser/results/fisher_exact_5e-05_results.tsv
+ 
+You now have p-value for a large number of categories:
+Total_Missense,     Total_Deleterious,     Total_LoF
+Het_Missense,       Het_Deleterious,       Het_LoF
+HomComHet_Missense, HomComHet_Deleterious, HomComHet_LoF
+Hom_Missense,       Hom_Deleterious,       Hom_LoF
 
-The output file is created in the same directory you executed the program in. It is of the form:
-<first_input_file_name>.burden_analysis_fisher_table.txt
+Where
+Het: heterozygous mutation
+HomComHet: compound heterozygous mutations (I didn't decide on this abbreviation)
+Hom: homozygous mutations
 
-So, we would have the file my_samples_0.01_cadd_counts_table.my_samples_0.01_cadd_counts_table.
-
-These file names get a little silly. But, when you are running on several sets of samples, with different functional deleteriousness methods and different frequencies, it can be a life saver to be able to grep small strings on an "ls -l" output.
-
-At this point, you have to sit and study the output columns in the resulting ".txt" file created above. After some time, you will understand how the p-values are given for all the different mutation classifications.
+These are listed once for the total varaint count of a gene, then listed again for the number of samples containing significant variants for that gene. Because a single sample may contribute several variants, these numbers can be very different.
