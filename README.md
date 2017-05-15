@@ -103,10 +103,10 @@ Options:
 
 ```bash
 $ /home/user/programs/gene_burden_fisher_exact.py \
- -cases-file my_annotated_samples_5e-05_cadd_counts_table.tsv \
- -num-cases 100
- -controls-file my_annotated_controls_5e-05_cadd_counts_table.tsv \
- -num-controls 2700 \
+ --cases-file my_annotated_samples_5e-05_cadd_counts_table.tsv \
+ --num-cases 100
+ --controls-file my_annotated_controls_5e-05_cadd_counts_table.tsv \
+ --num-controls 2700 \
  > /home/luser/results/fisher_exact_5e-05_results.tsv
 ```
 You now have p-value for a large number of categories:
