@@ -78,6 +78,7 @@ This way, you can keep track of which output is from a specific sample and which
 
 You now need to run the programs on your controls WITH THE SAME OPTIONS USED BEFORE. Actually, you can use a different output directory, if you wish.
 
+```bash
 $ /home/user/programs/exome_burden_script.py \
  --frequency 5e-05 \
  --vcf my_annotated_controls.vcf \
@@ -85,6 +86,7 @@ $ /home/user/programs/exome_burden_script.py \
  --outputDir /home/luser/results \
  --shift \
  --coverage 10
+```
 
 # Determine p-values: gene_burden_fisher_exact.py
 This program requires the the two files just previously generated and the number of samples in each.
@@ -99,13 +101,14 @@ Parameters:
 Options:
         -i | --individual-counts         FLAG: independent counts yield independent p-values
 
+```bash
 $ /home/user/programs/gene_burden_fisher_exact.py \
  -cases-file my_annotated_samples_5e-05_cadd_counts_table.tsv \
  -num-cases 100
  -controls-file my_annotated_controls_5e-05_cadd_counts_table.tsv \
  -num-controls 2700 \
  > /home/luser/results/fisher_exact_5e-05_results.tsv
- 
+```
 You now have p-value for a large number of categories:
 Total_Missense,     Total_Deleterious,     Total_LoF
 Het_Missense,       Het_Deleterious,       Het_LoF
