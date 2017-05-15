@@ -3,15 +3,15 @@ Which genes have the most meaningful mutations in your set of whole exome seq sa
 
 ### WHAT'S GOING ON HERE?
 The general idea of "gene burden" is finding those genes that have a significant number of meaningful mutations among your samples that may have a causative effect on the phenotype of interest. So, what is a meaningful mutation? Great question! I wish I had a quick description. But, really, that's up to you to decide. These scripts make the following assumptions of what a meaningful mutation is:
-1) The variant frequency in the ExAC databases is lower than a given threshold. You decide what the threshold is at run-time.
-2) RefSeq annotation must annotate the variant as being either exonic or splicing.
-3) RefSeq annotation must NOT annotate the variant as synonymous or unknown.
-4) Optionally, RefSeq annotation can be used to filter out non-frameshift deletions. You decide at run-time if you want this filtering turned on.
+1. The variant frequency in the ExAC databases is lower than a given threshold. You decide what the threshold is at run-time.
+2. RefSeq annotation must annotate the variant as being either exonic or splicing.
+3. RefSeq annotation must NOT annotate the variant as synonymous or unknown.
+4. Optionally, RefSeq annotation can be used to filter out non-frameshift deletions. You decide at run-time if you want this filtering turned on.
 
 If all of these filters are passed, then the mutation is classified according to the following criteria:
-1) Loss-of-Function: RefSeq annotates the variant as "stoploss", "stopgain", "splicing" or "frameshift".
-2) Deleterious: Either CADD score is 15 or greater or metaSVM score is "D"(eleterious). You choose which method to use at run-time.
-3) Missense: The default classification if the other two criteria are not true. Remember, we have already filtered out all mutations that we are not interested in. All remaining mutations must receive a classification.
+1. Loss-of-Function: RefSeq annotates the variant as "stoploss", "stopgain", "splicing" or "frameshift".
+2. Deleterious: Either CADD score is 15 or greater or metaSVM score is "D"(eleterious). You choose which method to use at run-time.
+3. Missense: The default classification if the other two criteria are not true. Remember, we have already filtered out all mutations that we are not interested in. All remaining mutations must receive a classification.
 
 The results of these filters and classifications are saved to a file that has the counts for all variant types, under all conditions for each gene.. You must also run these filters and classifications on a set of controls that are ethnically similar to your samples. Your samples and controls are then compared with a Fisher right-tailed test to determine which genes are significantly mutated by your samples, compared to your controls. The result is a tab-delimited file (which can be viewed in a spreadsheet program) that details the p-value for each classification of variant for both  "number of mutations per gene" and "number of samples that have a mutation in that gene." Thus, two sets of information are counted for each gene:
 1) The total number of variants in the gene.
@@ -31,9 +31,9 @@ You need to run two programs in order: exome_burden_script.py (once on your samp
 You must be running python version 2.7.5 or higher. These programs have NOT been written for Python 3.
 
 Assumptions:
-1) The programs in this repository are located on your machine at /home/user/programs
-2) Your VCF files are located on your machine at /home/user/data
-3) Results of these analysis will be stored at /home/user/results
+1. The programs in this repository are located on your machine at /home/user/programs
+2. Your VCF files are located on your machine at /home/user/data
+3. Results of these analysis will be stored at /home/user/results
 
 # Filter and Classify Mutations: exome_burden_script.py
 $ /home/user/programs/exome_burden_script.py
@@ -54,6 +54,7 @@ Options
 
 Here is an example with commonly used options:
 
+```bash
 $ /home/user/programs/exome_burden_script.py \
  --frequency 5e-05 \
  --vcf my_annotated_samples.vcf \
@@ -61,12 +62,13 @@ $ /home/user/programs/exome_burden_script.py \
  --outputDir /home/luser/results \
  --shift \
  --coverage 10
+```
 
 ALL PARAMETERS MUST BE SPECIFIED FOR THE PROGRAM TO RUN. Also, do NOT use the "--excel" option when following this work flow. It is intended as a last step in a different work flow not described here.
 
 Regardless of the options you use, this program creates two files in the specified output directory.
-1) my_annotated_samples_5e-05_cadd_counts_table.tsv
-2) my_annotated_samples_5e-05_cadd_variant.table
+1. my_annotated_samples_5e-05_cadd_counts_table.tsv
+2 my_annotated_samples_5e-05_cadd_variant.table
 
 The first one is a tab-delimited file with the p-values of all the various mutation classifications explained above. The second file is a "melted VCF". That is all data is turned "sideways" for further analysis.
 
