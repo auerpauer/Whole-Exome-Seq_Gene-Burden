@@ -85,7 +85,7 @@ $ /home/user/programs/exome_burden_script.py \
  --frequency 5e-05 \
  --vcf my_annotated_controls.vcf \
  --funcDel CADD \
- --outputDir /home/luser/results \
+ --outputDir /home/user/results \
  --shift \
  --coverage 10
 ```
