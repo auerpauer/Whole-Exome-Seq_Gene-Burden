@@ -1,4 +1,4 @@
-# Whole-Exome-Seq_Gene-Burden
+# Whole Exome Sequencing: Gene Burden
 Which genes have the most meaningful mutations in your set of whole exome seq samples?
 
 ### WHAT'S GOING ON HERE?
