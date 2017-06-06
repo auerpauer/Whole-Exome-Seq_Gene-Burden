@@ -109,7 +109,7 @@ $ /home/user/programs/gene_burden_fisher_exact.py \
  --num-cases 100
  --controls-file my_annotated_controls_5e-05_cadd_counts_table.tsv \
  --num-controls 2700 \
- > /home/luser/results/fisher_exact_5e-05_results.tsv
+ > /home/user/results/fisher_exact_5e-05_results.tsv
 ```
 You now have p-value for a large number of categories:
 Total_Missense,     Total_Deleterious,     Total_LoF
