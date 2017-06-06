@@ -113,10 +113,12 @@ $ /home/user/programs/gene_burden_fisher_exact.py \
 ```
 You now have p-value for a large number of categories:
 
-|Total_Missense     |Total_Deleterious     |Total_LoF    |
-|Het_Missense       |Het_Deleterious       |Het_LoF      |
-|HomComHet_Missense |HomComHet_Deleterious |HomComHet_LoF|
-|Hom_Missense       |Hom_Deleterious        |Hom_LoF     |
+|Missense           |Deleterious           |Loss of Function|
+|-------------------|----------------------|----------------|
+|Total_Missense     |Total_Deleterious     |Total_LoF       |
+|Het_Missense       |Het_Deleterious       |Het_LoF         |
+|HomComHet_Missense |HomComHet_Deleterious |HomComHet_LoF   |
+|Hom_Missense       |Hom_Deleterious       |Hom_LoF         |
 
 Where
 Het: heterozygous mutation
