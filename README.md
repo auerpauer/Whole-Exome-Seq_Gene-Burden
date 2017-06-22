@@ -1,25 +1,42 @@
 # Whole Exome Sequencing: Gene Burden
-Which genes have the most meaningful variants in your set of whole exome seq samples?
+Which genes have the most harmful variants in your set of whole exome sequencing samples?
 
 ### WHAT'S GOING ON HERE?
-The general idea of "gene burden" is finding those genes that have a significant number of meaningful variants among your samples that may have a causative effect on the phenotype of interest. So, what is a meaningful variant? Great question! I wish I had a quick description. But, really, that's up to you to decide. These scripts make the following assumptions of what a meaningful variant is:
-1. The variant frequency in the ExAC databases is lower than a given threshold. You decide what the threshold is at run-time.
+The general idea of "gene burden" is finding those genes that have a significant number of harmful variants among your samples, compared to ethnic controls. These genes may then have a causative effect on the phenotype you are studying. So, what is a harmful variant? This analysis pipeline makes the following assumptions of what a harmful variant is:
+1. The variant frequency in the ExAC databases is less than or equal to a given threshold. You decide what the threshold is at run-time. Suggestion: 5e-05 for dominant (homozygous) variants; 1e-04 for recessive (heterozygous) variants
 2. RefSeq annotation must annotate the variant as being either exonic or splicing.
 3. RefSeq annotation must NOT annotate the variant as synonymous or unknown.
 4. Optionally, RefSeq annotation can be used to filter out non-frameshift deletions. You decide at run-time if you want this filtering turned on.
 
 If all of these filters are passed, then the mutation is classified according to the following criteria:
 1. Loss-of-Function: RefSeq annotates the variant as "stopgain", "splicing" or "frameshift".
-2. Deleterious: The variant is a nonframeshift insertion or deletion. Or the variant causes a "stoploss". Or the variant is a non-synonymous SNV and either a) CADD score is 15 or greater or  b) metaSVM score is "D" (for deleterious). You choose which of the two methods to use at run-time.
-3. Missense: This is the default classification if the other two criteria are not met. Remember, we have already filtered out all mutations that we are not interested in. All remaining mutations must receive a classification.
+2. Deleterious: The variant is a nonframeshift insertion or deletion. Or the variant causes a "stoploss". Or the variant is a non-synonymous SNV and either a) CADD score is 15 or greater or  b) metaSVM score is "D" (for deleterious). You choose between CADD or metaSVM score at runtime.
+3. Missense: This is the default classification if the other two criteria are not met. Remember, we have already filtered out all variants that we are not interested in. All remaining variants must receive a classification.
 
-The results of these filters and classifications are saved to a file that has the counts for all variant types, under all conditions for each gene. You must also run these filters and classifications on a set of controls that are ethnically similar to your samples. This allows you to filter out SNVs that are common to that ethnic background. Your samples and controls are then compared using a Fisher right-tailed test to determine which genes are significantly mutated by your samples, compared to your controls. The result is a tab-delimited file (which can be imkported into a spreadsheet program) that details the p-value for each classification of variant for both "number of variants per gene" and "number of samples that have a variant in that gene." Thus, two sets of information are counted for each gene:
-1) The total number of variants in the gene.
-2) The number of samples containing a variant in this gene.
+The variants are further classified based on whether the variant is homozygous, heterozygous, or compound heterozygous. Compound hets occur when the same sample contributes more than one heterozygous variants to the same gene.
 
-Just to be clear, if a one or more samples contains more than one variant for a gene, these number are not going to be similar.
+|Missense           |Deleterious           |Loss of Function|
+|-------------------|----------------------|----------------|
+|Total_Missense     |Total_Deleterious     |Total_LoF       |
+|Het_Missense       |Het_Deleterious       |Het_LoF         |
+|HomComHet_Missense |HomComHet_Deleterious |HomComHet_LoF   |
+|Hom_Missense       |Hom_Deleterious       |Hom_LoF         |
 
-These programs also track whether variants are homozygous, heterozygous or compound-heterozygous. This information is included in the column names of the output file.
+Where
+Het: heterozygous mutation
+HomComHet: compound heterozygous mutations
+Hom: homozygous mutation
+
+
+These variants are counted in two separate, but related ways:
+1) The total number of variants in a gene.
+2) The number of samples contributing one or more variants in a gene.
+
+Just to be clear, if a one or more samples contains more than one variant for a gene, these number are not going to be the same.
+
+The results of these filters and classifications are saved to a tab-delimited file that has the counts for all the above variant types. You must also run these filters and classifications on a set of controls that share the same ethnic background as your samples.
+
+This allows you to filter out genes that are commonly mutated in that ethnic background. The variant counts for each gene of your samples and ethnic controls are then compared using a right-tailed Fisher's exact test. This generates a p-value for each variant classification. These p-values are written to a tab-delimited file, which can be imported into a spreadsheet program. Then you can sort by p-value to find the most significantly mutated genes.
 
 The annotations used for filtering and mutation classification are better explained at: http://annovar.openbioinformatics.org/en/latest/user-guide/gene/#output-file-1-refseq-gene-annotation
 
@@ -111,19 +128,6 @@ $ /home/user/programs/gene_burden_fisher_exact.py \
  --num-controls 2700 \
  > /home/user/results/fisher_exact_5e-05_results.tsv
 ```
-You now have p-value for a large number of categories:
-
-|Missense           |Deleterious           |Loss of Function|
-|-------------------|----------------------|----------------|
-|Total_Missense     |Total_Deleterious     |Total_LoF       |
-|Het_Missense       |Het_Deleterious       |Het_LoF         |
-|HomComHet_Missense |HomComHet_Deleterious |HomComHet_LoF   |
-|Hom_Missense       |Hom_Deleterious       |Hom_LoF         |
-
-Where
-Het: heterozygous mutation
-HomComHet: compound heterozygous mutations
-Hom: homozygous mutation
 
 These columns are listed once for the total variant count of a gene, then listed again for the number of samples containing significant variants for that gene. Because a single sample may contribute several variants, these numbers can be very different.
 
