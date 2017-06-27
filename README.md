@@ -18,8 +18,8 @@ If all of these filters are passed, then the variant is classified according to 
  * The variant causes a "stoploss".
  * The variant is a non-synonymous SNV and either
  	 a) CADD score is 15 or greater or
-	 b) metaSVM score is "D" (for deleterious).
-  You choose between CADD or metaSVM score at runtime.
+	 b) The score of the other chosen functional deleteriousness method is "D" (for deleterious).
+  You choose between CADD or another scoring method at runtime.  
 3. Missense: This is the default classification if the other two criteria are not met. Remember, we have already filtered out all variants that we are not interested in. All remaining variants must receive a classification.
 
 The variants are further classified based on whether the variant is homozygous, heterozygous, or compound heterozygous. Compound hets occur when the same sample contributes more than one heterozygous variants to the same gene.
