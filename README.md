@@ -31,10 +31,10 @@ The variants are further classified based on whether the variant is homozygous, 
 |HomComHet_Missense |HomComHet_Deleterious |HomComHet_LoF   |
 |Hom_Missense       |Hom_Deleterious       |Hom_LoF         |
 
-Where  
-Het: heterozygous mutation  
-HomComHet: compound heterozygous mutations  
-Hom: homozygous mutation
+Where
+* Het: heterozygous mutation
+* HomComHet: compound heterozygous mutations
+* Hom: homozygous mutation
 
 
 These variants are counted in two separate, but related ways:
