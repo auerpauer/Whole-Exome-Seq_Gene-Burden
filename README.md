@@ -13,12 +13,12 @@ So, what is a harmful variant? This analysis pipeline makes the following assump
 
 If all of these filters are passed, then the variant is classified according to the following criteria:
 1. Loss-of-Function: RefSeq annotates the variant as "stopgain", "splicing" or "frameshift".
-2. Deleterious:
+2. Deleterious: One of the following three conditions must be true:
  * The variant is a nonframeshift insertion or deletion.
  * The variant causes a "stoploss".
  * The variant is a non-synonymous SNV and either
-  a) CADD score is 15 or greater or
-  b) metaSVM score is "D" (for deleterious).
+ 	 a) CADD score is 15 or greater or
+	 b) metaSVM score is "D" (for deleterious).
   You choose between CADD or metaSVM score at runtime.
 3. Missense: This is the default classification if the other two criteria are not met. Remember, we have already filtered out all variants that we are not interested in. All remaining variants must receive a classification.
 
