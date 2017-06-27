@@ -2,15 +2,24 @@
 Which genes have the most harmful variants in your set of whole exome sequencing samples?
 
 ### WHAT'S GOING ON HERE?
-The general idea of "gene burden" is finding those genes that have a significant number of harmful variants among your samples, compared to ethnic controls. These genes may then have a causative effect on the phenotype you are studying. So, what is a harmful variant? This analysis pipeline makes the following assumptions of what a harmful variant is:
-1. The variant frequency in the ExAC databases is less than or equal to a given threshold. You decide what the threshold is at run-time. Suggestion: 5e-05 for dominant (homozygous) variants; 1e-04 for recessive (heterozygous) variants
+The general idea of "gene burden" is finding those genes that have a significant number of harmful variants among your samples. One way to do this is to compare the results from your samples against ethnic controls. This way, any genes that are highly mutated in the proper ethnic controls will not trigger a false positive in your result set.
+
+
+So, what is a harmful variant? This analysis pipeline makes the following assumptions of what a harmful variant is within the constraints of VCF annotation:
+1. The variant frequency in the ExAC databases is less than or equal to a given threshold. You decide what the threshold is at run-time. Suggestions: 5e-05 for dominant (homozygous) variants; 1e-04 for recessive (heterozygous) variants
 2. RefSeq annotation must annotate the variant as being either exonic or splicing.
 3. RefSeq annotation must NOT annotate the variant as synonymous or unknown.
 4. Optionally, RefSeq annotation can be used to filter out non-frameshift deletions. You decide at run-time if you want this filtering turned on.
 
-If all of these filters are passed, then the mutation is classified according to the following criteria:
+If all of these filters are passed, then the variant is classified according to the following criteria:
 1. Loss-of-Function: RefSeq annotates the variant as "stopgain", "splicing" or "frameshift".
-2. Deleterious: The variant is a nonframeshift insertion or deletion. Or the variant causes a "stoploss". Or the variant is a non-synonymous SNV and either a) CADD score is 15 or greater or  b) metaSVM score is "D" (for deleterious). You choose between CADD or metaSVM score at runtime.
+2. Deleterious:
+ * The variant is a nonframeshift insertion or deletion.
+ * The variant causes a "stoploss".
+ * The variant is a non-synonymous SNV and either
+  a) CADD score is 15 or greater or
+  b) metaSVM score is "D" (for deleterious).
+  You choose between CADD or metaSVM score at runtime.
 3. Missense: This is the default classification if the other two criteria are not met. Remember, we have already filtered out all variants that we are not interested in. All remaining variants must receive a classification.
 
 The variants are further classified based on whether the variant is homozygous, heterozygous, or compound heterozygous. Compound hets occur when the same sample contributes more than one heterozygous variants to the same gene.
