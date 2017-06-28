@@ -43,9 +43,7 @@ These variants are counted twice in two separate, but related ways:
 
 Just to be clear, if a one or more samples contains more than one variant for a gene, these number are not going to be the same.
 
-The results of these filters and classifications are saved to a tab-delimited file that has the counts for all the above variant types. You must also run these filters and classifications on a set of controls that share the same ethnic background as your samples.
-
-This allows you to filter out genes that are commonly mutated in that ethnic background. The variant counts for each gene of your samples and ethnic controls are then compared using a right-tailed Fisher's exact test. This generates a p-value for each variant classification. These p-values are written to a tab-delimited file, which can be imported into a spreadsheet program. Then you can sort by p-value to find the most significantly mutated genes.
+The results of these filters and classifications are saved to a tab-delimited file that has the counts for all the above variant types. You must also run these filters and classifications on a set of controls that share the same ethnic background as your samples. The variant counts for each gene of your samples and ethnic controls are then compared using a right-tailed Fisher's exact test. This generates a p-value for each variant classification. These p-values are written to a tab-delimited file, which can be imported into a spreadsheet program. Then you can sort by p-value to find the most significantly mutated genes.
 
 The annotations used for filtering and mutation classification are better explained at: http://annovar.openbioinformatics.org/en/latest/user-guide/gene/#output-file-1-refseq-gene-annotation
 
