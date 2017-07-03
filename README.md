@@ -136,7 +136,7 @@ $ /home/user/programs/exome_burden_script.py \
 ```
 
 ## Determine p-values: gene_burden_fisher_exact.py
-This program requires the the two count table files previously generated for your cases and their ethnic controls along with the number of samples in each.
+This program requires the two count table files previously generated for your cases and their ethnic controls along with the number of samples in each.
 
 ```text
 $ /home/user/programs/gene_burden_fisher_exact.py
