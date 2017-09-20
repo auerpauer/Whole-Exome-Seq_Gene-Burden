@@ -1,3 +1,5 @@
+This repo is no longer being updated. At some point in the future, our GH org will make code publicly available. We have no timeline on this, yet.
+
 # Whole Exome Sequencing: Gene Burden Overview
 Which genes have the most harmful variants in your set of whole exome sequencing samples?
 
