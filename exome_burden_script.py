@@ -55,18 +55,24 @@ class MutationCount:
   # Each of these inner lists contains two more lists which contain names of samples that have heterozygous or homozygous genotypes
   # When the number of genes stored in 'countingSets' passes a threshold, the oldest gene in the hash is processed and written to file
   # This happens without the calling class (ExomeBurden) knowing that a gene is being processed and deleted from this class
+  
+  # variant type identifiers
   missense = 0
   deleterious = 1
   lof = 2 # Loss of Function
+
+  # zygosity identifiers
   het = 0
   hom = 1
+  
   geneCountThreshold = 10 # assuming that not more than 10 gene records are interleaved in the VCF file
 
   def __init__(self, vcfFilename, outputDir, excel):
     self.excel = excel
     self.open_table_files(vcfFilename, outputDir)
     self.addedGeneNames = [] # append new names and pop(0) processed names; FIFO order
-    self.countingSets = {}
+    self.countingSets = {} # Hash that uses gene name, variant type and zygosity (het/hom) to point to sample names that
+                           # that share all three of the above values.
     return
 
   def __del__(self):
@@ -111,52 +117,121 @@ class MutationCount:
     self.tableFH.write('Hom_Missense\tHom_Deleterious\tHom_LoF\n')
     return
 
-    ### add_mutation ###
-    # called by external class
+  #  ### add_mutation ###
+  #  # called by external class
+  #  # 'countingSets' is a hash keyed on gene name.
+  #  # The value is a list of three elements, representing the 3 variant types; 0:missense, 1:deleterious, 2:lof
+  #  # Inside each of these list elements is a list of two elements, representing the zygosity; 0:hetero, 1:homo
+  #  # so that self.countingSets['OCT4'][1][0] = 'sampleName1' stores this sample as a deleterious hetero variant
+  #def add_mutation(self, geneName, variantType, genotype, sampleName):
+  #  if geneName not in self.countingSets.keys():
+  #    self.countingSets[geneName] = [([],[]), ([],[]), ([],[])] # missense:(het, hom); deleterious:(het,hom); lof:(het,hom)
+  #    self.addedGeneNames.append(geneName)
+  #  self.countingSets[geneName][variantType][genotype].append(sampleName)
+  #  if len(self.countingSets.keys()) > self.geneCountThreshold:
+  #    self.process_oldest_gene()
+  #  return
+
+  ### add_mutation ###
   def add_mutation(self, geneName, variantType, genotype, sampleName):
+    # add new gene, if not already in top level keys
     if geneName not in self.countingSets.keys():
-      self.countingSets[geneName] = [([],[]), ([],[]), ([],[])] # missense:(het, hom); deleterious:(het,hom); lof:(het,hom)
+      self.countingSets[geneName] = {}
       self.addedGeneNames.append(geneName)
-    self.countingSets[geneName][variantType][genotype].append(sampleName)
+      
+    # add new sample name, if not already in second level keys
+    if sampleName not in self.countingSets[geneName].keys():
+      self.countingSets[geneName][sampleName] = [[0,0],[0,0],[0,0]] # [missense, deleterious, LoF]
+    self.countingSets[geneName][sampleName][variantType][genotype] += 1
+
     if len(self.countingSets.keys()) > self.geneCountThreshold:
       self.process_oldest_gene()
     return
 
-    ### process_oldest_gene ###
-    # called by MutationCount.add_mutation() and MutationCount.flush_genes()
-    # This consolidates all the mutations for a specific gene and writes them to their respective table files.
-    # IDEALLY, this method would be called as a separate thread, but I do not have time to design & test that implementation.
-    # The main logic here is to count the variants and the samples and figure out compound heterozygotes from single heterozygotes
-    # for a given sample name. If a sample contributes only one heterozygote, then we count that single variant as 'het'.
-    # However, if a sample contributes more than one heterozygote to a gene, it is considered a compound heterozygote.
+  ### process_oldest_gene ###
   def process_oldest_gene(self):
     oldestGene = self.addedGeneNames.pop(0) # pop the first name off the list
-    #if oldestGene == 'LFNG': pdb.set_trace() # FDFT1, PABPC3, MPRIP ABCA12
-    variantCount = ([0,0,0], [0,0,0], [0,0,0]) # varaintCount = (het:[missense, deleterious, lof], cmpdHet[..], hom[..])
+
+    variantCount = ([0,0,0], [0,0,0], [0,0,0]) # variantCount = (het:[missense, deleterious, lof], cmpdHet[..], hom[..])
+    sampleCount = ([0,0,0], [0,0,0], [0,0,0]) # same structure as 'variantCount'
+
+    # loop on sample names under 'oldestGene'
+    for sampleName in self.countingSets[oldestGene].keys():
+      allele = [] # two variants make an allele, find the first two most damaging (it's OK if there is only one)
+      variantIndex = 2 # 2 = lof, 1 = deleterious, 0 = missense
+      
+      # loop on variant types (lof, deleterious, missense) under 'sampleName'
+      while 0 <= variantIndex:
+        # look at heterozygous variants
+        if 2 <= self.countingSets[oldestGene][sampleName][variantIndex][self.het]:
+          if len(allele) < 2:
+            allele.append(variantIndex)
+        elif 1 == self.countingSets[oldestGene][sampleName][variantIndex][self.het]:
+          variantCount[0][variantIndex] += 1
+          sampleCount[0][variantIndex] += 1
+
+        # look at homozygous variants
+        variantCount[2][variantIndex] += 2 * (self.countingSets[oldestGene][sampleName][variantIndex][self.hom])
+        sampleCount[2][variantIndex] += self.countingSets[oldestGene][sampleName][variantIndex][self.hom]
+        variantIndex -= 1
+
+      if 0 < len(allele):
+        leastDamaging = min(allele)
+        variantCount[1][leastDamaging] += 2
+        sampleCount[1][leastDamaging] += 1
+    # end for loop on sample names
+
+    #if 'PABPC3' == oldestGene:
+    #  pdb.set_trace()
+    if sum(sampleCount[0]) > 0 or sum(sampleCount[1]) > 0 or sum(sampleCount[2]) > 0: 
+      self.write_to_tables(oldestGene, variantCount, sampleCount) # write every gene
+    self.countingSets[oldestGene] = None # remove data stored at key:geneName
+    self.countingSets.pop(oldestGene, None) # remove key:geneName
+    
+    return
+    
+  ### process_oldest_gene ###
+  # called by MutationCount.add_mutation() and MutationCount.flush_genes()
+  # This consolidates all the mutations for a specific gene and writes them to their respective table files.
+  # The main logic here is to count the variants and the samples and figure out compound heterozygotes from single heterozygotes
+  # for a given sample name. If a sample contributes only one heterozygote, then we count that single variant as 'het'.
+  # However, if a sample contributes more than one heterozygote to a gene, it is considered a compound heterozygote.
+  def process_oldest_gene_OLD_CODE(self):
+    #debugGenes = ['LFNG', 'FDFT1', 'PABPC3', 'MPRIP', 'ABCA12'] 
+    debugGenes = ['PABPC3'] # compound heterozygous counting
+    
+    oldestGene = self.addedGeneNames.pop(0) # pop the first name off the list
+    if oldestGene in debugGenes: pdb.set_trace()
+    
+    variantCount = ([0,0,0], [0,0,0], [0,0,0]) # variantCount = (het:[missense, deleterious, lof], cmpdHet[..], hom[..])
     sampleCount = ([0,0,0], [0,0,0], [0,0,0]) # same structure as 'variantCount'
     varTypeIndex = 0
+    #if oldestGene in debugGenes: pdb.set_trace() # compound heterozygote counts
     # walk through the list of variant types holding sample names for heterozygous and homozygous mutations in 'self.countingSets'
     while varTypeIndex < len(self.countingSets[oldestGene]):
-      hetNamesCounted = []
-      cmpdNamesCounted = []
+      #hetNamesCounted = []
+      #cmpdNamesCounted = []
+      #hetSamples = self.countingSets[oldestGene][varTypeIndex][self.het] # all sample names
+      #uniqSampleNames = list(set(hetSamples)) # unique sample names
+      #for name in uniqSampleNames:
+      #  # count the number of times this name occurs in 'hetSamples'
+      #  occurrences = hetSamples.count(name)
+      #  #if 1 < occurrences:
+      #  #  # more than one het mutation means this is a "compound heterozygote"
+      #  #  variantCount[1][varTypeIndex] += occurrences * 2
+      #  #  if name not in cmpdNamesCounted:
+      #  #    sampleCount[1][varTypeIndex] += 1
+      #  #    cmpdNamesCounted.append(name)
+      #  # increment heterozygote count for variant and sample
+      #  if occurrences == 1: # occurrences > 1 fall under compound heterzygous variants
+      #    variantCount[0][varTypeIndex] += occurrences
+      #    if name not in hetNamesCounted:
+      #      sampleCount[0][varTypeIndex] += 1
+      #      hetNamesCounted.append(name)
+      ## end "for loop" on unique sample names with non-homozygous mutations
+
+      # find all homozygous variants and count them
       homNamesCounted = []
-      hetSamples = self.countingSets[oldestGene][varTypeIndex][self.het] # all sample names
-      uniqSampleNames = list(set(hetSamples)) # unique sample names
-      for name in uniqSampleNames:
-        # count the number of times this name occurs in 'hetSamples'
-        occurrences = hetSamples.count(name)
-        if 1 < occurrences:
-          # more than one het mutation means this is a "compound heterozygote"
-          variantCount[1][varTypeIndex] += occurrences * 2
-          if name not in cmpdNamesCounted:
-            sampleCount[1][varTypeIndex] += 1
-            cmpdNamesCounted.append(name)
-        # increment heterozygote count for variant and sample
-        variantCount[0][varTypeIndex] += occurrences
-        if name not in hetNamesCounted:
-          sampleCount[0][varTypeIndex] += 1
-          hetNamesCounted.append(name)
-      
       homSamples = self.countingSets[oldestGene][varTypeIndex][self.hom]
       uniqSampleNames = list(set(homSamples))
       variantCount[2][varTypeIndex] = len(homSamples) * 2
@@ -165,19 +240,65 @@ class MutationCount:
           sampleCount[2][varTypeIndex] += 1
           homNamesCounted.append(name)
       varTypeIndex += 1
+
+    # COUNT COMPOUND HETEROZYGOUS VARIANTS ACROSS VARIANT TYPES
+    # put the heterozygous sample names into separate lists
+    missenseSamples = self.countingSets[oldestGene][self.missense][self.het]
+    deleteriousSamples = self.countingSets[oldestGene][self.deleterious][self.het]
+    lofSamples = self.countingSets[oldestGene][self.lof][self.het]
+
+    uniqLof = list(set(lofSamples))
+    for name in uniqLof:
+      if 1 < lofSamples.count(name):
+        variantCount[1][2] += 2
+        sampleCount[1][2] += 1
+        continue
+      else:
+        variantCount[0][2] += 1
+        variantCount[0][2] += 1
+        continue
+      
+
+    uniqDeleterious = list(set(deleteriousSamples))
+    for name in uniqDeleterious:
+      occurrences = deleteriousSamples.count(name)
+      occurrences += lofSamples.count(name)
+      if 1 < occurrences:
+        variantCount[1][1] += 2
+        sampleCount[1][1] += 1
+        continue
+      else:
+        variantCount[0][1] += 1
+        sampleCount[0][1] += 1
+        continue
+
+    uniqMissense = list(set(missenseSamples))
+    for name in uniqMissense:
+      occurrences = missenseSamples.count(name)
+      occurrences += deleteriousSamples.count(name)
+      occurrences += lofSamples.count(name)
+      if 1 < occurrences:
+        variantCount[1][0] += 2
+        sampleCount[1][0] += 1
+        continue
+      else:
+        variantCount[0][0] += 1
+        sampleCount[0][0] += 1
+        continue
+    
     if sum(sampleCount[0]) > 0 or sum(sampleCount[1]) > 0 or sum(sampleCount[2]) > 0: 
-      self.write_to_table(oldestGene, variantCount, sampleCount) # write every gene
+      self.write_to_tables(oldestGene, variantCount, sampleCount) # write every gene
     self.countingSets[oldestGene] = None # remove data stored at key:geneName
     self.countingSets.pop(oldestGene, None) # remove key:geneName
     return
 
-  ### write_to_table ###
+  ### write_to_tables ###
   # called by process_oldest_gene()
   # This method is insanely ugly, I did not have the time to write it in a modular fashion
   # varCount = het(missense, deleterious, lof), cmpdHet(..), hom(..)
   # smpCount has the same layout as varCount
   # Mis -> missense; Del -> deleterious; LoF -> Loss-of-Function
-  def write_to_table(self, geneName, varCount, smpCount):
+  def write_to_tables(self, geneName, varCount, smpCount):
     #if 'MPRIP' == geneName: pdb.set_trace() # PABPC3 # debug code for interlaced genes in the genome
 
     # compute and write variant allele counts
@@ -185,14 +306,15 @@ class MutationCount:
     hetDel = hetLoF + varCount[0][1]
     hetMis = hetDel + varCount[0][0]
 
-    homPlusCmpdHetLoF = varCount[1][2] + varCount[2][2]
-    homPlusCmpdHetDel = homPlusCmpdHetLoF + varCount[1][1] + varCount[2][1]
-    homPlusCmpdHetMis = homPlusCmpdHetDel + varCount[1][0] + varCount[2][0]
+    homPlusCmpdHetLoF = varCount[1][2] + varCount[2][2] # cmpdHet LoF + hom LoF
+    homPlusCmpdHetDel = homPlusCmpdHetLoF + varCount[1][1] + varCount[2][1] # cmpdHet LoF + cmpdHet Del + hom Del
+    homPlusCmpdHetMis = homPlusCmpdHetDel + varCount[1][0] + varCount[2][0] # cmpdHet Del + cmpdHet Mis + hom Mis
 
     homLoF = varCount[2][2]
     homDel = homLoF + varCount[2][1]
     homMis = homDel + varCount[2][0]
 
+    # homozygous counts are included in compound heterozygous counts
     totLoF = hetLoF + homPlusCmpdHetLoF
     totDel = hetDel + homPlusCmpdHetDel
     totMis = hetMis + homPlusCmpdHetMis
@@ -254,51 +376,44 @@ class MutationCount:
 
 #######################
 ##### ExomeBurden #####
-# Each line in the VCF file is processed independently. The only exception to this is counting variations that are
-# heterozygous to track compound heterozygous variants.
+# Each line in the VCF file is processed independently. The only exception to this is counting variations that heterozygous
+# for compound variant tracking.
 #
-# Most of the information we care about resides in the INFO field of the annotation. This data is packed down a few levels,
-# and is extracted with the "<string>.split(<delimiter>)" method. This yields 'key=value' pairs, which are also split.
+# Most of the information we care about resides in the INFO field of the annotation. This data is packed down by a few levels,
+# which is extracted with the "<string>.split(<delimiter>)" method. This yields 'key=value' pairs, which are also split.
 # The 'key=value' pairs are stored in the hash "infoHash". The list "screenedInfoField" is a list of 'key' values that are
 # used for filtering the variant. Thus, we store all values in the INFO field, but only use a few to determine if the variant is
 # worth further consideration.
 #
 # Because this is bioinformatics, there are exceptions to how the data is stored or labeled in the VCF file that require
-# extra code to deal with. The most egregious is that there are two different names for ExAC data, depending on the annotation
-# applied to the the VCF file. In other words, some VCF files use one string for the ExAC key while other VCFs use a different string.
-# To allow for this, "screenedInfoFields" is allowed to have a list instead of a string in one of it's elements. If a list is detected,
+# extra code to deal with. The most egregious is that there are two different names for ExAC data, used by different VCF
+# files. In other words, some VCF files use one string throughout the entire file, other VCF files use the other string
+# throughout the entire file.
+# To allow for this, "screenedInfoFields" is allowed to have a list instead of a string in it's elements. If a list is detected,
 # the elements in the list are matched against values in the VCF file. One a match is found, that value is used to overwrite
-# the list. The code in method "screened_info_field()" performs this.
+# the list. The code in method "screened_field()" performs this.
 #
-## OBSOLETE WITH THE USE OF gnomad_ExAC DATA
-## vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 # Another example of exceptional data handling is the version strings appended to the other two SNV population databases.
 # To deal with this, "screenedInfoField" has a string for each of these databases without any version information. These values
 # are matched up against the value in the VCF file. When a match is found THE VALUE IN "screenedInfoFields" IS USED to allow
 # for smooth processing of the data values for these databases.
-## ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-## OBSOLETE WITH THE USE OF gnomad_ExAC DATA
 #
 # Another wrinkle to the filtering of variants is that those variants that pass all filters are to have their records "melted".
 # This means that, for each sample, all data is written out in tab-delimited format. This creates a very great redundancy in the
 # resulting data table. This is why ALL VALUES in the INFO field are saved in "infoHash". This allows all these fields to be
-# written to the melted file without their values being changed. Despite the apparently wastefulness of this file, it is very
-# useful for post-processing beyond just achieving p-values from the Fisher exact test.
-#
-# Besides the melted VCF file, the end result of this program is to generate a file of variant counts. This file should be generated
-# for both your cases as well as an ethnically comparable background. The resultant variant counts tables are compared with a
-# Fisher exact test to determine if the number of significant variants contributed to each gene is statistically significant.
+# written to the melted file without their values being changed.
 
 class ExomeBurden:
   allowedFuncDelFilters = ('CADD', 'metaSVM', 'radialSVM', 'MPC') # functional deleteriousness filter
-  #allowedPopFilterNames = ('esp6500', '1000g', 'exac') # population frequency filter, OBSOLETE WITH gnomad_ExAC DATA
+  allowedPopFilterNames = ('esp6500', '1000g', 'exac') # population frequency filter
   desiredFormatFields = ['GT', 'AD', 'DP', 'GQ', 'PL'] # melted table output formatting of FORMAT field
-  lcrPickleFile = '/home/user/data/lcr_positions_nov2015_v1.pickle'  # low complexity regions
-  lcrHash = None
+  #lcrPickleFile = '/ycga-ba/lifton/Software/gene_burden/lcr_positions_nov2015_v1.pickle'
+  lcrPickleFile = '/home/ja623/gene_burden_test/lcr_positions_nov2015.pickle'
+  lcfHash = None
 
   # These hold the command line paramters specified by the user at runtime
   desiredPopFreq = None
-  vcfFH = None # variant call format - file handle
+  vcfFH = None
   funcDel = None
   plDiffCutoff = None
   excel = False
@@ -306,7 +421,7 @@ class ExomeBurden:
   removeNonFrameShiftInDel = False
   doNotFilter = []
   requiredDepth = 8 # default required read depth value
-  africaSpecial = False # this was a one-off special case, it can safely be ignored
+  africaSpecial = False
 
   # Variables that hold parsed values from the file
   infoHash = None
@@ -330,8 +445,8 @@ class ExomeBurden:
   def __init__(self):
     self.read_lcr_pickle_file()
     vcfFileName = self.parse_cmdline_arguments()
-    
-    # create output file names
+ 
+    # create output file name
     filename = os.path.basename(vcfFileName)
     filename = os.path.splitext(filename)[0]
     countTableName = '{0}_{1}_{2}_plDiff{3}_counts_table.tsv'.format(filename, self.desiredPopFreq, self.funcDel, self.plDiffCutoff)
@@ -350,7 +465,7 @@ class ExomeBurden:
   def read_lcr_pickle_file(self):
     if not os.path.isfile(self.lcrPickleFile):
       sys.stderr.write('ERROR - unable to access low complexity region pickle file: {0}\n'.format(self.lcrPickleFile))
-      sys.stderr.write('\tYou need to edit this program and change the value of \"lcrPickleFile\"\n')
+      sys.stderr.write('\tYou need to edit this program and change the value of \"lcrPickFile\"\n')
       sys.exit(1)
     fh = open(self.lcrPickleFile, 'r')
     self.lcrHash = cPickle.load(fh)
@@ -362,6 +477,10 @@ class ExomeBurden:
   def parse_cmdline_arguments(self):
     if 1 == len(sys.argv):
       self.print_short_help()
+    # The list of parameters/options keeps growing, the following logic requires too much effort to upkeep
+    #if 9 > len(sys.argv) or 14 < len(sys.argv):
+    #  sys.stderr.write('WARNING - Incorrect number of arguments\n')
+    #  self.print_short_help()
 
     argIndex = 1
     while argIndex < len(sys.argv):
@@ -423,6 +542,11 @@ class ExomeBurden:
       sys.stderr.write('ERROR - \"frequency\", \"VCF file\", \"functional deleteriousness\" and \"plDiff cutoff\" must be specified\n')
       self.print_short_help()
 
+    #for name in self.doNotFilter:
+    #  if name not in self.allowedPopFilterNames:
+    #    sys.stderr.write('ERROR - illegal population database name: {0}\n'.format(name))
+    #    self.print_short_help()
+    
     if None == self.outputDir:
       self.outputDir = '.'
 
@@ -435,8 +559,8 @@ class ExomeBurden:
     except ValueError as exc:
       sys.stderr.write('ERROR - \"frequency\" value must contain a decimal point (floats only): {0}\n')
       self.print_short_help()
-    if freq > 1 or freq <= 0:
-      sys.stderr.write('ERROR - incorrect range for frequency; must be between [0 and 1): {0}\n')
+    if freq > 1 or freq < 0:
+      sys.stderr.write('ERROR - incorrect range for frequency; must be between (0 and 1): {0}\n')
       self.print_short_help()
     self.desiredPopFreq = freq
     return
@@ -444,10 +568,11 @@ class ExomeBurden:
   ### open_vcf_file ###
   def open_vcf_file(self, filename):
     try:
-      self.vcfFH = open(filename, 'r')
+      fh = open(filename, 'r')
     except IOError as exc:
       sys.stderr.write('ERROR - unable to open VCF file: {0}\n'.format(filename))
       self.print_short_help()
+    self.vcfFH = fh
     return
 
   ### parse_functional_deleteriousness ###
@@ -478,16 +603,18 @@ class ExomeBurden:
     sys.stderr.write('usage: {0} parameters [options] \n\n'.format(os.path.basename(sys.argv[0])))
     sys.stderr.write('Parameters:\n')
     sys.stderr.write('\t-f | --frequency\tmax desired frequency of variants in population databases\n')
-    sys.stderr.write('\t-v | --vcf\t\tVCF file containing variants to be analyzed\n')
+    sys.stderr.write('\t-v | --vcf\t\tVCF file to read in containing variants to be analyzed\n')
     sys.stderr.write('\t-d | --funcDel\t\tmethod to use for filtering functional deleteriousness: {0}\n'.format(', '.join(self.allowedFuncDelFilters)))
     sys.stderr.write('\t-p | --pldiff-cutoff\tminimum required value of plDiff for a sample to be included in further processing\n')
     sys.stderr.write('\t\t 7:low stringency 8:high stringency\n')
-    sys.stderr.write('Options\n')
+    sys.stderr.write('Options:\n')
     sys.stderr.write('\t-o | --outputDir\toutput directory to write files; default: current directory\n')
     sys.stderr.write('\t-x | --excel\t\tFLAG: use to cause more header information for display in spreadsheet\n')
     sys.stderr.write('\t-s | --shift\t\tFLAG: use to specify that nonframeshift indels should be filtered out\n')
     sys.stderr.write('\t-c | --coverage\t\trequired read depth for a variant to be accepted; default: 8\n')
     sys.stderr.write('\t-a | --africa-special\tFLAG: filter specific info fields\n')
+    #sys.stderr.write('\t-e | --exempt-database\tcomma-delimited list of population databases to NOT use as filters: {0}\n'.\
+    #                 format(','.join(self.allowedPopFilterNames)))
     sys.stderr.flush()
     sys.exit(1)
     return
@@ -524,6 +651,7 @@ class ExomeBurden:
       raise BurdenException(BurdenException.parsing_error, errMsg, 'read_vcf_file')
     self.sampleNames = headerLine.split('\t')[9:]
     self.write_melted_header_line()
+    self.sampleNames = headerLine.split('\t')[9:]
     try:
       self.read_variants()
     except BurdenException as exc:
@@ -575,6 +703,14 @@ class ExomeBurden:
                        .format('\t'.join(self.desiredFormatFields)) )
     self.meltFH.write( 'FILTER\tPLDIFF/DEPTH\t{0}\tALLELE\tVARIANT TYPE\t{1}\tALLELE\tVARIANT TYPE\t{1}\n'
                        .format('\t'.join(self.prefixFieldNames), '\t'.join(self.infoFieldNames)) )
+    
+    #self.meltFH.write( 'SAMPLE\t{0}\tCHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\t{1}'.
+    #                   format('\t'.join(self.desiredFormatFields), '\t'.join(self.infoFieldNames)) )
+    ##for name in self.formatFieldNames:
+    ##  self.meltFH.write('\t{0}'.format(name))
+    #self.meltFH.write('\tCALCULATED VARIANT TYPE')
+    #self.meltFH.write('\tPLDIFF/DEPTH\n')
+    #self.meltFH.flush()
     return
     
   ### read_variants ###
@@ -585,11 +721,11 @@ class ExomeBurden:
   # First, determine the position of the GQ, DP and PL values in the FORMAT field.
   # Second, isolate data for each alternate allele.
   # Third, the data for each alternate allele is passed through filters and marked "False" if it fails any of them.
-  # Fourth, the number of samples in this record that have passed the filters are counted.
+  # Fourth, the number of samples that have passed the filters are counted.
   # Fifth, the entire record is written to a variant table; each sample is melted out to create a large table of all variant data.
   #
   # A word about "alleleList"
-  # Each record has a reference allele and at least one alternate allele. "alleleList" holds information for all of these alleles.
+  # Each record has a reference allele and at least one alternate allele. "alleleList" hold information for all of these alleles.
   # Each list element consists of another list of three elements:
   # 0) The actual allelele ie: "A", "GT"
   # 1) A hash containing the "Key=Value" pairs from the INFO field for this allele.
@@ -622,7 +758,7 @@ class ExomeBurden:
       prefixHash = self.populate_allele_list(altAlleles.split(','), infoField)
 
       ### DEBUG
-      #if chrom == '6' and position == '32485520': pdb.set_trace()
+      #if chrom == '7' and position == '142583330': pdb.set_trace()
       ### END DEBUG
 
       index = 1 # skip reference allele
@@ -647,24 +783,26 @@ class ExomeBurden:
         self.classify_variant(index)
         index += 1 # end "while index > len(self.alleleList):" loop
 
+      #if '1684347' == position or '3753056' == position:
+      #  pdb.set_trace()
       # If all alleles fail the filters, do not bother looking at each individual sample
       allFail = True
       for allele in self.alleleList:
-        if 'fail' != allele[3]:
+        if 'fail' != allele[2]:
           allFail = False
       if allFail:
-        plDiffScores = ['fail']*len(samples) # mark all samples as "fail"
+        plDiffScores = ['fail']*len(samples)
       else:
         plDiffScores = self.count_genotypes(self.alleleList[1][1]['Gene.refGene'], samples)
-      self.melt_vcf_record(line, plDiffScores, prefixHash)
+        self.melt_vcf_record(line, plDiffScores, prefixHash)
       line = self.vcfFH.readline().rstrip() # end "while line:" loop
     return
 
   ### populate_allele_list ###
   # called by read_variants()
-  # Parse out "KEY=VALUE" pairs for each alternate allele.
-  # These pairs are stored in a hash named 'infoHash'.
-  # This hash is then stored in 'alleleList'..
+  # Parse out key=value pairs for each alternate allele.
+  # These pairs are stored in a hash named infoHash.
+  # This hash is then stored in alleleList.
   # Each alternate allele gets it's own infoHash.
   def populate_allele_list(self, altAlleles, infoField):
     try:
@@ -687,17 +825,17 @@ class ExomeBurden:
   # The first line, 're.split', returns a list of all data surrounded by the regex, including
   # the data captured by the parentheses. ie:(.*?)
   # We then need to remove the first and last elements of that list, as they do not contain
-  # data that we want.
-  # We finally need to remove any empty elements with the call to filter.
+  # data that we want
+  # We finally need to remove any empty elements with the call to filter
   # Final format of "match":
   # a) prefix data
   # b) annovar date value
   # c) allele specific data
-  # (b) and (c) repeat for each alternate allele.
+  # (b) and (c) repeat for each alternate allele
   def parse_allele_info(self, infoField):
     match = re.split('ANNOVAR_DATE=(\d{4}-\d\d-\d\d);(.*?)ALLELE_END;', infoField)
     if 1 == len(match):
-      match = re.split('ANNOVAR_DATE=(\d{4}-\d\d-\d\d);(.*?)ALLELE_END', infoField) # search w/o semicolon at end
+      match = re.split('ANNOVAR_DATE=(\d{4}-\d\d-\d\d);(.*?)ALLELE_END', infoField)
       if 1 == len(match):
         errString = 'ERROR - unable to parse info field with use of \"re.split()\" function\n'
         raise BurdenException(BurdenException.parsing_error, errString, 'parse_allele_info')
@@ -741,6 +879,7 @@ class ExomeBurden:
     
   ### screened_info_field ###
   # called by parse_info_field()
+  # ja623 May 18, 2016
   # Allow more general matching of INFO field names to allow matching of different versions of databases.
   # If one of the screened field names is contained in 'currentField', return the value that matched against 'currentField'.
   # This way, we dictate what keys are used in 'self.infoHash', when matched later in 'filter_on_database_population_frequencies()'.
@@ -757,7 +896,7 @@ class ExomeBurden:
         fieldName = self.screenedInfoFields[index]
         matchObj = re.search(fieldName, currentField) # does "fieldName" occur in "currentField"?
         if matchObj:
-          return fieldName
+          return fieldName # should we be returning "currentField" instead STANDING QUESTION
       else:
         # This chunk of code only needs to run once for each list in "screenedInfoFields".
         # After that, the field in "screenedInfoFields" has been changed to a string.
@@ -765,7 +904,7 @@ class ExomeBurden:
         for fieldName in degenerateFieldNames:
           matchObj = re.search(fieldName, currentField)
           if matchObj:
-            self.screenedInfoFields[index] = fieldName # overwrite the list with the string matching the current VCF data
+            self.screenedInfoFields[index] = fieldName # alter the value to reflect what the current VCF contains
             return fieldName
       index += 1
     return False
@@ -781,12 +920,12 @@ class ExomeBurden:
       fieldName = self.screenedInfoFields[index]
       if fieldName not in infoHash.keys():
         if not isinstance(fieldName, basestring):
-          errString = 'ERROR - Unable to find one of the matching field names in : {0}\n'.format(','.join(fieldName))
+          errString = 'ERROR - Unable to find one of the field names in : {0}\n'.format(','.join(fieldName))
           raise BurdenException(BurdenException.parsing_error, errString, 'verify_info_fields')
         missingFields.append(fieldName)
       index += 1
     if missingFields:
-      errString = 'ERROR - The following fields were not present in the INFO field:\n{0}\n'.format(','.join(missingFields))
+      errString = 'ERROR - The following fields were not present in the INFO field: {0}\n'.format(','.join(missingFields))
       raise BurdenException(BurdenException.parsing_error, errString, 'verify_info_fields')
     return
 
@@ -853,6 +992,8 @@ class ExomeBurden:
   def classify_variant(self, index):
     infoHash = self.alleleList[index][1]
     dScore = self.determine_deleteriousness(infoHash)
+    if None == dScore:
+      raise BurdenException(BurdenException.parsing_error, 'Unable to define \"deleteriousness score\"', 'classify_variant')
     if ('splicing' in infoHash['Func.refGene'] or
         'frameshift' == infoHash['ExonicFunc.refGene'][0:10] or
         'stopgain' in infoHash['ExonicFunc.refGene']):
@@ -868,27 +1009,9 @@ class ExomeBurden:
   ### determine_deleteriousness ###
   # called by classify_variant()
   def determine_deleteriousness(self, infoHash):
-    if 'metaSVM' == self.funcDel:
-      if '.' == infoHash['MetaSVM_pred']:
-        #infoHash['MetaSVM_pred'] = 'T'
-        return 'tolerated' # assuming no value means score of "tolerated"
-      if 'T' == infoHash['MetaSVM_pred']:
-        return 'tolerated'
-      else:
-        return 'deleterious'
-      
-    if 'radialSVM' == self.funcDel:
-      if '.' == infoHash['RadialSVM_pred']:
-        #infoHash['RadialSVM_pred'] = 'T'
-        return 'tolerated'
-      if 'T' == infoHash['RadialSVM_pred']:
-        return 'tolerated'
-      else:
-        return 'deleterious'
-      
+    #dScore = None
     if 'CADD' == self.funcDel:
       if '.' == infoHash['CADD_phred']:
-        #infoHash['CADD_phred'] = 0
         return 'tolerated'
       caddPhred = float(infoHash['CADD_phred'])
       #if 15 > caddPhred:
@@ -897,8 +1020,26 @@ class ExomeBurden:
       else:
         return 'deleterious'
 
+    if 'metaSVM' == self.funcDel:
+      if '.' == infoHash['MetaSVM_pred']:
+        return 'tolerated'
+      if 'T' == infoHash['MetaSVM_pred']:
+        return 'tolerated'
+      else:
+        return 'deleterious'
+      
+    if 'radialSVM' == self.funcDel:
+      if '.' == infoHash['RadialSVM_pred']:
+        return 'tolerated'
+      if 'T' == infoHash['RadialSVM_pred']:
+        return 'tolerated'
+      else:
+        return 'deleterious'
+      
     if 'MPC' == self.funcDel:
       if '.' == infoHash['mpc']:
+        return 'tolerated'
+      elif 'NA' == infoHash['mpc']:
         return 'tolerated'
       else:
         mpcValue = float(infoHash['mpc'])
@@ -907,7 +1048,7 @@ class ExomeBurden:
       else:
         return 'tolerated'
     return None
-                                              
+
   ### filter_on_refgene_values ###
   # called by read_variants()
   def filter_on_refgene_values(self, index, chrom, position):
@@ -932,7 +1073,7 @@ class ExomeBurden:
     return
 
   ### inside_low_complexity_region ###
-  # This method determines if 'position' is within any regions specified in 'self.lcrHash'.
+  # This method determines if 'position' is within any regions specified in 'self.lcrHash'
   # 'self.lcrHash' is keyed on chromosome number or letter in character format (ie: '1', '15', 'X')
   # The value pointed to by each chromosome is a sorted list of lists.
   # The secondary level of lists is the start and end of a low-complexity-region on that chromosome.
@@ -980,9 +1121,7 @@ class ExomeBurden:
 
   ### count_genotypes ###
   # called by read_variants()
-  # Samples are filtered in this method, as opposed to alternate alleles.
-  # Essentiall, at least one of the alternate alleles has passed all filters
-  # and we now need to know how many samples containing these alleles are valid.
+  # SAMPLE FILTERING PERFORMED IN THIS METHOD
   # For each sample:
   # Parse out the genotype info.
   # Check that it is not all reference alleles or unknown by seeing if it exists in self.unwantedGenotypes.
@@ -996,9 +1135,11 @@ class ExomeBurden:
   # This algorithm should deal with any number of alternate alleles.
   def count_genotypes(self, geneName, samples):
     #if 'PABPC3' == geneName: pdb.set_trace()
-    plDiffScores = ['hom']*len(samples) # default to homozygous
+    plDiffScores = ['hom']*len(samples)
     index = 0
     while index < len(samples):
+      #if 'LFNG' == geneName and '2/2' == samples[index][0:3]:
+      #  pdb.set_trace()
       currentSample = samples[index]
       # filter out samples that have no information for this position
       currentGenotype = currentSample.split(':')[0]
@@ -1066,8 +1207,6 @@ class ExomeBurden:
     return plDiffScore
 
   ### assign_variant ###
-  # Finds the variant type that is most deleterious.
-  # We already know that both values are NOT "fail".
   def assign_variant(self, sampleAlleles):
     if 'fail' == sampleAlleles[0][2]:
       return sampleAlleles[1][2]
@@ -1082,7 +1221,10 @@ class ExomeBurden:
     #CHROM  POS       ID      REF       ALT       QUAL    FILTER       INFO       FORMAT
     (chrom, position, ID, refAllele, altAlleles, quality, filterField, infoField, formatField) = columns[0:9]
     samples = columns[9:]
+    #genomicLocationData = [chrom, position, ID, refAllele, altAlleles, quality, filterField] # 7 fields populated
     genomicLocationData = [chrom, position, refAllele, altAlleles, quality, filterField]
+    #genomicLocationData.extend( self.melt_info_field(infoField) )
+    #genomicLocationData.append(self.allowedVariantTypes[variantType])
     prefixString = self.build_prefix_string(prefixHash)
     index = 0
     while index < len(self.sampleNames):
@@ -1103,20 +1245,20 @@ class ExomeBurden:
 
   ### write_melted_record ###
   # called by melt_vcf_record()
-  # genomicLocationData: [chrom, position, refAllele, altAlleles, quality, filter]
+  # genomicLocationData: chrom, position, refAllele, altAlleles, quality, filter
   # formatField: Description of data in each sample for this line. ie: GT:AD:DP:GQ:PL or GT:AD:DP:GQ:PGT:PID:PL
   # sampleName: Name of the sample as specified in the header line starting with "#CHROM".
   # sample: Values as specified in "formatField". ie: 0/1:29,7:36:99:207,0,1389 or 0/1:23,4:27:94:0|1:17365_C_G:94,0,1581
-  # plDiffScore: Quality score for heterozygous genotypes. May also hold reason for filter failure in "count_genotypes()".
+  # plDiffScore: Quality score for heterozygous genotypes. May also hold reason filters in "count_genotypes()".
   # PLEASE NOTE that both "formatField" and "sample" are delimited by colon (:).
   def write_melted_record(self, genomicLocationData, prefixString, formatField, sampleName, sample, plDiffScore):
     sampleData = sample.split(':')
     formatHeader = formatField.split(':')
     genotype = sampleData[formatHeader.index('GT')]
     if genotype in self.unwantedGenotypes:
-      return
+      return # do not print data for samples that have no genotype information
     if isinstance(plDiffScore, basestring) and 'fail' in plDiffScore:
-      return # do not print data for samples that have failed tests in "count_genotypes()"
+      return # do not print data for samples that have failed tests in 'count_genotypes()'
 
     ### DEBUG ###
     #if '1684347' == genomicLocationData[1] or '3753056' == genomicLocationData[1] or '6529183' == genomicLocationData[1]:
@@ -1128,19 +1270,20 @@ class ExomeBurden:
     else:
       (plusStrand, minusStrand) = genotype.split('|')
     sampleAlleles = [self.alleleList[int(plusStrand)], self.alleleList[int(minusStrand)]]
-    # Check for 'fail' data value and whether this allele is an indel in a low complexity region
     if  ('fail' == sampleAlleles[0][2] and not sampleAlleles[1][3]) \
     and ('fail' == sampleAlleles[1][2] and not sampleAlleles[0][3]):
-      return
+      return # if neither allele makes an effective change to the protein, skip this record
     effectiveVariantType = self.assign_variant(sampleAlleles)
-    effectiveVariantType = self.convert_variant_to_string(effectiveVariantType)
+    effectiveVariantType = self.convert_variant_int_to_string(effectiveVariantType)
+    allele1Data = []
+    allele2Data = []
     try:
-      var1String = self.convert_variant_to_string(sampleAlleles[0][2])
-      var2String = self.convert_variant_to_string(sampleAlleles[1][2])
+      var1String = self.convert_variant_int_to_string(sampleAlleles[0][2])
+      var2String = self.convert_variant_int_to_string(sampleAlleles[1][2])
     except BurdenException as exc:
       exc.add_to_stack('write_melted_record')
-    allele1Data = [var1String]
-    allele2Data = [var2String]
+    allele1Data.append(var1String)
+    allele2Data.append(var2String)
     allele1Data.extend(self.melt_allele_data(sampleAlleles[0][1]))
     allele2Data.extend(self.melt_allele_data(sampleAlleles[1][1]))
     
@@ -1184,7 +1327,7 @@ class ExomeBurden:
     self.meltFH.flush()
     return
 
-  def convert_variant_to_string(self, variantType):
+  def convert_variant_int_to_string(self, variantType):
     if variantType == self.mutCount.missense:
       return 'missense'
     if variantType == self.mutCount.deleterious:
@@ -1194,7 +1337,7 @@ class ExomeBurden:
     if 'fail' == variantType:
       return '-'
     errMsg = 'ERROR - variant type does not contain expected value\n'
-    raise BurdenException(BurdenException.parsing_error, errMsg, 'convert_variant_to_string')
+    raise BurdenException(BurdenException.parsing_error, errMsg, 'convert_variant_type_to_string')
 
     
   ### melt_allele_data ###
